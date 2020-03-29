@@ -73,6 +73,14 @@ b8:7c:6f:XX:XX:XX  00004459-0000-1000-XXXX-XXXXXXXXXXXX  0x19      WRITE NO RESP
 b8:7c:6f:XX:XX:XX  00004460-0000-1000-XXXX-XXXXXXXXXXXX  0x1c      WRITE NO RESPONSE WRITE NOTIFY
 ```
 
+### Set Target
+
+Set a static Target for use with enum, write, and read commands:
+
+```
+    > target 00:11:22:33:44:55
+```
+
 ### View Options
 ```
 jaBLEs > options
@@ -86,7 +94,25 @@ Interface Type      public
 ```
 
 ### Write
-// To Do
+Interact with a target device and write to available service handles.
+
+Write values must be written as a non-delimited hex format, or if the 'string' parameter is used as the third argument, this will be auto-converted:
+
+```
+    > write 0x3 5468697349736154657374
+    > write 0x3 ThisIsaTest string
+```
+
+Note: tab complete will show available 'write' handles if 'enum' has been previous run.
+
 
 ### Read
-// To Do
+
+Interact with a target device and read from the available service handles:
+
+```
+    > read 0x3
+    > read 0x1a
+```
+
+Note: tab complete will show available 'read' handles if 'enum' has been previous run.
