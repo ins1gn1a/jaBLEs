@@ -9,8 +9,10 @@ import sys
 from configparser import ConfigParser
 from tabulate import tabulate
 
-__version__ = "0.0.1"
-__banner__ = rf"""
+__author__  = "ins1gn1a"
+__tool__    =  "jaBLEs"
+__version__ = "1.0.0"
+__banner__  = rf"""
    _       ____  _     _____     
   (_) __ _| __ )| |   | ____|___ 
   | |/ _` |  _ \| |   |  _| / __|
@@ -19,8 +21,7 @@ __banner__ = rf"""
  _/ /
 |__/  v{__version__}
 """
-__author__ = "ins1gn1a"
-__tool__ =  "\x1b[91mjaBLEs\x1b[0m"
+
 
 
 class ColPrint(object):
@@ -49,6 +50,18 @@ class ColPrint(object):
     def blue(self,string):
         return self.BLUE + string + self.NO_FORMAT
 
+    def info(self,string):
+        print (self.BLUE + "[i] " + self.NO_FORMAT + string)
+
+    def error(self,string):
+        print (self.RED + "[!] " + self.NO_FORMAT + string)
+
+    def warn(self,string):
+        print (self.YELLOW + "[?] " + self.NO_FORMAT + string)
+
+    def ok(self,string):
+        print (self.GREEN + "[+] " + self.NO_FORMAT + string)
+
 
 class JablesUI(Cmd):
 
@@ -61,9 +74,9 @@ class JablesUI(Cmd):
     try:
         parser.read('jables.conf')
         _interface = parser.get('interface', 'int')
-    except:
+    except: # Create new config file if cannot be found
         parser.add_section('interface')
-        parser['interface']['int'] ='0'
+        parser['interface']['int'] = '0'
         parser['interface']['type'] = "public"
         parser.write(open('jables.conf', 'w'))
         _interface = parser.get('interface', 'int')
@@ -158,16 +171,16 @@ Perform a BLE scan for devices within range. Optional argument is a timeout for 
         if args:
             _timeout = int(args)
         else:
-            _timeout = 5
+            _timeout = 2
 
         # Start scanner
         scanner = btle.Scanner(self._interface)
         try:
             self._devices = scanner.scan(timeout=_timeout)
         except:
-            print(f"Error: Can't connect to Bluetooth interface hci{self._interface}")
+            self.pp.error(f"Error: Can't connect to Bluetooth interface hci{self._interface}")
+            return
 
-        print("")
 
         _headerrow = ['Bluetooth Address', 'Device Name', 'RSSI', 'Connectable', 'Address Type']
 
@@ -212,7 +225,6 @@ Perform a BLE scan for devices within range. Optional argument is a timeout for 
             _rows.append(_row)
             self._disc_devices.append(_row)
         self.displayDevices("")
-        # print (tabulate(_rows,headers=_headerrow,tablefmt="simple"))
 
 
     def do_enum(self,args):
@@ -231,10 +243,10 @@ Note: tab complete will show previously discovered bluetooth addresses if 'scan'
         if args:
             self._target = args
         elif self._target:
-            print (f"Enumerating {self._target}")
+            self.pp.ok (f"Enumerating {self._target}")
 
         else:
-            print ("No target set")
+            self.pp.warn ("No target set")
             return
 
 
@@ -244,7 +256,7 @@ Note: tab complete will show previously discovered bluetooth addresses if 'scan'
             handles = _device.getCharacteristics()
             _device.disconnect()
         except:
-            print("Unable to connect")
+            self.pp.error("Error: Unable to connect")
             return
 
         self._characteristics = []
@@ -343,7 +355,7 @@ Note: tab complete will show available 'write' handles if 'enum' has been previo
                                           addrType=self._hci_type,
                                           iface=int(self._interface))
             except:
-                print("Unable to connect")
+                self.pp.error("Error: Unable to connect")
                 return
 
             _handle = int(args[0], 16)
@@ -353,7 +365,10 @@ Note: tab complete will show available 'write' handles if 'enum' has been previo
                 _hex = "".join("{:02x}".format(ord(c)) for c in args[1])
                 _val = bytearray.fromhex(_hex)
 
-            _device.writeCharacteristic(_handle,_val,withResponse=True)
+            try:
+                _device.writeCharacteristic(_handle,_val, False)
+            except:
+                self.pp.error("Error: Unable to connect")
 
 
     def do_read(self,args):
@@ -373,7 +388,7 @@ Note: tab complete will show available 'read' handles if 'enum' has been previou
                                           addrType=self._hci_type,
                                           iface=int(self._interface))
             except:
-                print("Unable to connect")
+                self.pp.error("Error: Unable to connect")
                 return
 
             _handle = int(args[0], 16)
@@ -395,12 +410,10 @@ Set a static Target for use with enum, write, and read commands:
             self._target = args
 
         elif self._target:
-            print("")
-            print (self._target)
+            self.pp.info ("Current Target: " + self._target)
 
         else:
-            print("")
-            print("Please enter a target Bluetooth address")
+            self.pp.warn("Please enter a target Bluetooth address")
 
 
     def do_interface(self,args):
@@ -417,12 +430,12 @@ Set the local Bluetooth interface (HCI) ID:
             self.parser.write(open('jables.conf','w'))
 
         elif self._interface:
-            print("")
-            print (f"hci{self._interface}")
+
+            self.pp.info (f"Current Interface: hci{self._interface}")
 
         else:
-            print("")
-            print("Please enter an interface: hciX or X")
+
+            self.pp.warn("Please enter an interface: hciX or X")
 
 
     def do_interface_type(self,args):
@@ -443,12 +456,10 @@ Set the local Bluetooth interface type:
             self.parser.write(open('jables.conf', 'w'))
 
         elif self._hci_type:
-            print("")
-            print (f"{self._hci_type}")
+            self.pp.info (f"Current Interface Type: {self._hci_type}")
 
         else:
-            print("")
-            print("Please enter an interface type: public or random")
+            self.pp.warn("Please enter an interface type: public or random")
 
 
     # Handle empty arugment when Enter is pressed (doesn't repeat previous cmd)
@@ -458,28 +469,40 @@ Set the local Bluetooth interface type:
 
     # Clears screen
     def do_cls(self, args):
+        """
+Clears the screen content
+"""
         os.system('cls' if os.name == 'nt' else 'clear')
 
 
     # Clears screen
     def do_clear(self, args):
-        """\n    Info\n    ----\n    Clears the screen content"""
+        """
+Clears the screen content
+"""
         os.system('cls' if os.name == 'nt' else 'clear')
 
 
+    def exit(self):
+        self.pp.info("Quitting")
+        raise SystemExit
+
     # Handle Ctrl+C
     def do_EOF(self, args):
-        # self.do_exit(None)
-        self.context = {"exit": False}
-        return True
+        """
+Exits the program
+"""
+        print("exit")
+        self.exit()
 
 
     # Exit program
     def do_exit(self, args):
-        """\n    Info\n    ----\n    Exit the program"""
+        """
+Exit the program
+"""
 
-        print("[!] Quitting.")
-        raise SystemExit
+        self.exit()
 
 
     # Hide unwanted arguments
@@ -493,11 +516,14 @@ if __name__ == '__main__':
     os.system('cls' if os.name == 'nt' else 'clear')
     print(__banner__)
 
+    pp = ColPrint()
+
     if (os.geteuid() != 0):
-        print("\nError: Re-run with Sudo\n")
+        print ("")
+        pp.error("Error: Re-run with Sudo\n")
         sys.exit(1)
     prompt = JablesUI()
-    prompt.prompt = f"\n{__tool__} > "
+    prompt.prompt = f"\n{pp.red(__tool__)} > "
     while True:
         try:
             prompt.cmdloop('')
