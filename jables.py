@@ -87,6 +87,7 @@ class JablesUI(Cmd):
     _disc_devices = []
     _targetcompletions = []
     _characteristics = []
+    _block_data = []
 
     # Set interface type (Public / Random)
     _hci_type_conf = parser.get('interface', 'type')
@@ -174,6 +175,7 @@ Perform a BLE scan for devices within range. Optional argument is a timeout for 
             _timeout = 2
 
         # Start scanner
+        self.pp.info("Starting BLE scan...")
         scanner = btle.Scanner(self._interface)
         try:
             self._devices = scanner.scan(timeout=_timeout)
@@ -181,6 +183,8 @@ Perform a BLE scan for devices within range. Optional argument is a timeout for 
             self.pp.error(f"Error: Can't connect to Bluetooth interface hci{self._interface}")
             return
 
+        self.pp.ok("Scan complete!")
+        self.pp.info(f"Identifying device names for {str(len(self._devices))} devices..")
 
         _headerrow = ['Bluetooth Address', 'Device Name', 'RSSI', 'Connectable', 'Address Type']
 
@@ -242,11 +246,12 @@ Note: tab complete will show previously discovered bluetooth addresses if 'scan'
 
         if args:
             self._target = args
+            self.pp.info(f"Enumerating {self._target}...")
         elif self._target:
-            self.pp.ok (f"Enumerating {self._target}")
+            self.pp.info(f"Enumerating {self._target}...")
 
         else:
-            self.pp.warn ("No target set")
+            self.pp.warn("No target set!")
             return
 
 
@@ -259,12 +264,14 @@ Note: tab complete will show previously discovered bluetooth addresses if 'scan'
             self.pp.error("Error: Unable to connect")
             return
 
+        self.pp.ok(f"Enumerated {self._target} with {str(len(handles))} characteristics")
+
         self._characteristics = []
 
-        try:
-            _device.connect(self._target,iface=self._interface)
-        except:
-            pass
+        # try:
+        #     _device.connect(self._target,iface=self._interface)
+        # except:
+        #     pass
 
         if handles:
             self._targetcompletions.append(self._target)
@@ -335,20 +342,80 @@ Interact with a target device and write to available service handles.
 Write values must be written as a non-delimited hex format, or if the 'string' parameter is used as the third argument, this will be auto-converted:
 
     > write 0x3 5468697349736154657374
-    > write 0x3 ThisIsaTest string
+    > write 0x3 'ThisIsaTest' string
 
 Note: tab complete will show available 'write' handles if 'enum' has been previous run.
 """
         if args:
+            self.pp.info("Connecting...")
+            try:
+                _device = btle.Peripheral(self._target,
+                                          addrType=self._hci_type,
+                                          iface=int(self._interface))
+            except:
+                self.pp.error("Error: Unable to connect")
+                return
 
-            args = shlex.split(args)
-            _writeValType = "hex"
+            self.pp.ok(f"Connected to {self._target}")
+            self.pp.info(f"Sending write cmd: {args}")
+            self.write(args,_device)
+            self.pp.ok("Commands sent")
 
-            if len(args) > 2:
-                if args[2] == "string" or args[2] == "s":
-                    _writeValType = "string"
-                else:
-                    _writeValType = "hex"
+
+    def write(self,args,_device):
+        args = shlex.split(args)
+        _writeValType = "hex"
+
+        if len(args) > 2:
+            if args[2] == "string" or args[2] == "s":
+                _writeValType = "string"
+            else:
+                _writeValType = "hex"
+
+        _handle = int(args[0], 16)
+        if self.match_hex(args[1]) and _writeValType != "string":
+            _val = bytearray.fromhex(args[1])
+        else:
+            _hex = "".join("{:02x}".format(ord(c)) for c in args[1])
+            _val = bytearray.fromhex(_hex)
+
+        try:
+            _device.writeCharacteristic(_handle, _val, False)
+        except:
+            self.pp.error("Error: Unable to connect")
+
+
+    def do_writeblk(self,args):
+        """
+Enter multiple 'write' commands as 'Handle Data':
+
+    > write
+    > 0x1e 5468697349736154657374
+    > 0x09 5468697349736154657374
+    > 0xa3 5468697349736154657374
+    > end
+
+Note: If you suffix the command with 'string' this will be converted to a hex string:
+
+    > write
+    > 0x1e 5468697349736154657374
+    > 0x09 'ThisIsATest' string
+    > 0xa3 5468697349736154657374
+    > end
+"""
+        self._block_data = []
+        _block_input = ""
+        self.pp.info("Enter one command per line as 'handle data' and then 'end' to finish. E.g: 0x1e 305721e4a290 ")
+        while True:
+            _block_input = input()
+            if _block_input.lower() != "end":
+                self._block_data.append(_block_input)
+            else:
+                self.pp.info("Write command input finished!")
+                break
+
+        if self._block_data:
+            self.pp.info("Connecting...")
 
             try:
                 _device = btle.Peripheral(self._target,
@@ -358,17 +425,15 @@ Note: tab complete will show available 'write' handles if 'enum' has been previo
                 self.pp.error("Error: Unable to connect")
                 return
 
-            _handle = int(args[0], 16)
-            if self.match_hex(args[1]) and _writeValType != "string":
-                _val = bytearray.fromhex(args[1])
-            else:
-                _hex = "".join("{:02x}".format(ord(c)) for c in args[1])
-                _val = bytearray.fromhex(_hex)
+            self.pp.ok(f"Connected to {self._target}")
 
-            try:
-                _device.writeCharacteristic(_handle,_val, False)
-            except:
-                self.pp.error("Error: Unable to connect")
+            for x in self._block_data:
+                self.pp.info(f"Sending write cmd: {x}")
+                self.write(x,_device)
+            self.pp.ok("Commands sent")
+
+        else:
+            self.pp.warn("No write commands specified")
 
 
     def do_read(self,args):
@@ -422,6 +487,8 @@ Set the local Bluetooth interface (HCI) ID:
 
     > interface 1
     > interface 0
+    > interface hci2
+    > interface hci0
 """
 
         if args:
