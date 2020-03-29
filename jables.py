@@ -402,17 +402,24 @@ Note: If you suffix the command with 'string' this will be converted to a hex st
     > 0x09 'ThisIsATest' string
     > 0xa3 5468697349736154657374
     > end
+
+Alternatively, if you've already run a block previously, you can re-run this by sending the 'x' argument:
+
+    > write x
 """
-        self._block_data = []
-        _block_input = ""
-        self.pp.info("Enter one command per line as 'handle data' and then 'end' to finish. E.g: 0x1e 305721e4a290 ")
-        while True:
-            _block_input = input()
-            if _block_input.lower() != "end":
-                self._block_data.append(_block_input)
-            else:
-                self.pp.info("Write command input finished!")
-                break
+        if args == "x":
+           self.pp.info("Sending previous block of write commands...")
+        else:
+            self._block_data = []
+            _block_input = ""
+            self.pp.info("Enter one command per line as 'handle data' and then 'end' to finish. E.g: 0x1e 305721e4a290 ")
+            while True:
+                _block_input = input()
+                if _block_input.lower() != "end":
+                    self._block_data.append(_block_input)
+                else:
+                    self.pp.info("Write command input finished!")
+                    break
 
         if self._block_data:
             self.pp.info("Connecting...")
