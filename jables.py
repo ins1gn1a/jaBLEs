@@ -12,7 +12,7 @@ import fcntl
 
 __author__  = "ins1gn1a"
 __tool__    =  "jaBLEs"
-__version__ = "1.1.1"
+__version__ = "1.2.0"
 __banner__  = rf"""
    _       ____  _     _____     
   (_) __ _| __ )| |   | ____|___ 
@@ -493,7 +493,7 @@ Set a static Target for use with enum, write, and read commands:
         return all(ord(c) < 128 for c in s)
 
 
-    def decode_text(self,data):
+    def decode_text(self,data,hex):
 
         if len(data) == 0:
             return
@@ -520,8 +520,10 @@ Set a static Target for use with enum, write, and read commands:
                         else:
                             z.append("_")
 
-                self.pp.info(f"Raw Hex: {a}")
-                self.pp.ok("".join(z) + "\n")
+                if hex:
+                    print("")
+                    self.pp.info(f"Raw Hex: {a}")
+                self.pp.ok("".join(z))
 
     def make_pipe(self):
         os.mkfifo(self.FIFO,mode=0o666)
@@ -539,14 +541,23 @@ Creates a FIFO pipe at /tmp/pipe by default. Stream an input of Hex content for 
 Specify a FIFO path:
 
     > decode_text /tmp/pipe1
+
+Note: Add the -x (or --hex) arg to also print the raw Hex string alongside the decoded output.
 """
 
+        _hex = False
         if args:
-            self.FIFO = args
+
+            args = shlex.split(args)
+            for arg in args:
+                if re.match('([/][\w\d]{1,})',arg):
+                   self.FIFO = arg
+                elif arg == "-x" or arg == "--hex":
+                    _hex = True
 
         # Create and open pipe
 
-        self.pp.info(f"Creating FIFO Pipe: {args}")
+        self.pp.info(f"Creating FIFO Pipe: {self.FIFO}")
         try:
             self.make_pipe()
         except:
@@ -554,7 +565,7 @@ Specify a FIFO path:
                 self.destroy_pipe()
                 self.make_pipe()
             except:
-                self.pp.error(f"Error: Unable to make pipe: {args}")
+                self.pp.error(f"Error: Unable to make pipe: {self.FIFO}")
                 return
 
         self.pp.info("FIFO opened")
@@ -562,7 +573,7 @@ Specify a FIFO path:
         while True:
             try:
                 data = fifo.readline()[:-1]
-                self.decode_text(data.splitlines())
+                self.decode_text(data.splitlines(),_hex)
             except KeyboardInterrupt:
                 self.pp.info("Exited Decoder")
                 fifo.close()
