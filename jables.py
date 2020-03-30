@@ -12,7 +12,7 @@ import fcntl
 
 __author__  = "ins1gn1a"
 __tool__    =  "jaBLEs"
-__version__ = "1.1.0"
+__version__ = "1.1.1"
 __banner__  = rf"""
    _       ____  _     _____     
   (_) __ _| __ )| |   | ____|___ 
@@ -513,12 +513,13 @@ Set a static Target for use with enum, write, and read commands:
                 for b in ba:
                     _content = False
                     c = (chr(b))
-                    if re.match('^[a-zA-Z0-9 _=\-\_,\[\]()@]+$', c):
+                    if re.match('^[a-zA-Z0-9&£#$%^?!+\'\"\\\/| _=\-,.*\[\]{}()@]+$', c):
                         if self.is_ascii(c):
                             z.append(c)
                             _content = True
                         else:
                             z.append("_")
+
                 self.pp.info(f"Raw Hex: {a}")
                 self.pp.ok("".join(z) + "\n")
 
