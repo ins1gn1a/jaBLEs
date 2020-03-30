@@ -8,10 +8,11 @@ import re
 import sys
 from configparser import ConfigParser
 from tabulate import tabulate
+import fcntl
 
 __author__  = "ins1gn1a"
 __tool__    =  "jaBLEs"
-__version__ = "1.0.0"
+__version__ = "1.1.0"
 __banner__  = rf"""
    _       ____  _     _____     
   (_) __ _| __ )| |   | ____|___ 
@@ -88,6 +89,7 @@ class JablesUI(Cmd):
     _targetcompletions = []
     _characteristics = []
     _block_data = []
+    FIFO = '/tmp/pipe'
 
     # Set interface type (Public / Random)
     _hci_type_conf = parser.get('interface', 'type')
@@ -487,6 +489,85 @@ Set a static Target for use with enum, write, and read commands:
         else:
             self.pp.warn("Please enter a target Bluetooth address")
 
+    def is_ascii(self,s):
+        return all(ord(c) < 128 for c in s)
+
+
+    def decode_text(self,data):
+
+        if len(data) == 0:
+            return
+        else:
+            pass
+
+
+        for x in data:
+            a = (x.strip().replace("LL Data: ", "").replace(" ", ""))
+            try:
+                ba = bytearray.fromhex(a)
+            except:
+                return
+            z = []
+            if re.match('^[0-9a-fA-F]+$', a):
+
+                for b in ba:
+                    _content = False
+                    c = (chr(b))
+                    if re.match('^[a-zA-Z0-9 _=\-\_,\[\]()@]+$', c):
+                        if self.is_ascii(c):
+                            z.append(c)
+                            _content = True
+                        else:
+                            z.append("_")
+                self.pp.info(f"Raw Hex: {a}")
+                self.pp.ok("".join(z) + "\n")
+
+    def make_pipe(self):
+        os.mkfifo(self.FIFO,mode=0o666)
+        os.chmod(self.FIFO,mode=0o666)
+
+    def destroy_pipe(self):
+        os.unlink(self.FIFO)
+
+    def do_decode_text(self,args):
+        """
+Creates a FIFO pipe at /tmp/pipe by default. Stream an input of Hex content for auto-decoding such as an output of Btlejack:
+
+    > decode_text
+
+Specify a FIFO path:
+
+    > decode_text /tmp/pipe1
+"""
+
+        if args:
+            self.FIFO = args
+
+        # Create and open pipe
+
+        self.pp.info(f"Creating FIFO Pipe: {args}")
+        try:
+            self.make_pipe()
+        except:
+            try:
+                self.destroy_pipe()
+                self.make_pipe()
+            except:
+                self.pp.error(f"Error: Unable to make pipe: {args}")
+                return
+
+        self.pp.info("FIFO opened")
+        fifo = open(self.FIFO, 'r')
+        while True:
+            try:
+                data = fifo.readline()[:-1]
+                self.decode_text(data.splitlines())
+            except KeyboardInterrupt:
+                self.pp.info("Exited Decoder")
+                fifo.close()
+                self.destroy_pipe()
+                return
+
 
     def do_interface(self,args):
         """
@@ -558,6 +639,10 @@ Clears the screen content
 
 
     def exit(self):
+        try:
+            os.unlink(self.FIFO)
+        except:
+            pass
         self.pp.info("Quitting")
         raise SystemExit
 
