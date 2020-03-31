@@ -14,7 +14,7 @@ from scapy.utils import PcapReader
 
 __author__  = "ins1gn1a"
 __tool__    =  "jaBLEs"
-__version__ = "1.4.1"
+__version__ = "1.4.2"
 __banner__  = rf"""
    _       ____  _     _____     
   (_) __ _| __ )| |   | ____|___ 
@@ -603,6 +603,7 @@ Set a static Target for use with enum, write, and read commands:
 
         elif pkt.haslayer(ATT_Write_Command):
             data = self.pcap_match_colour(str(pkt[ATT_Write_Command].data)[2:-1])
+            # data = self.pcap_match_colour(str(pkt[ATT_Write_Command].value)[2:-1])
             gatt_r = pkt[ATT_Write_Command].gatt_handle
             gatt = self.pp.blue(f"0x{gatt_r:04x}")
             self.pp.ok(f'Write-Cmd {gatt}: {data}')
@@ -610,13 +611,33 @@ Set a static Target for use with enum, write, and read commands:
 
         elif pkt.haslayer(ATT_Write_Request):
             data = self.pp.green(str(pkt[ATT_Write_Request].data)[2:-1])
+            # data = self.pp.green(str(pkt[ATT_Write_Request].value)[2:-1])
             gatt_r = pkt[ATT_Write_Request].gatt_handle
             gatt = self.pp.blue(f"0x{gatt_r:04x}")
             self.pp.ok(f'Write-Req {gatt}: {data}')
             _only_data = False
 
+        # elif pkt.haslayer(ATT_Find_By_Type_Value_Response):
+        #     print ()
+
         elif pkt.haslayer(BTLE_DATA) and self._decode_pcap_fifo:
-            self.pp.ok(self.pcap_match_colour(str(pkt[BTLE_DATA])[2:-1]))
+            data = self.pcap_match_colour(str(pkt[BTLE_DATA])[2:-1])
+            gatt_r = (pkt.gatt_handle)
+            gatt = self.pp.blue(f"0x{gatt_r:04x}")
+            self.pp.ok(f'          {gatt}: {data}')
+
+
+        elif pkt.load:
+            # print (pkt.show())
+            data = self.pcap_match_colour(str(pkt.load)[2:-1])
+            gatt_r = (pkt.gatt_handle)
+            gatt = self.pp.blue(f"0x{gatt_r:04x}")
+            self.pp.warn(f'          {gatt}: {data}')
+
+
+
+
+    # ATT_Execute_Write_Request, ATT_Execute_Write_Response, ATT_Find_By_Type_Value_Request, ATT_Find_By_Type_Value_Response, ATT_Find_Information_Request, ATT_Find_Information_Response, ATT_Handle_Value_Indication, ATT_Handle_Value_Notification, ATT_Prepare_Write_Request, ATT_Prepare_Write_Response, ATT_Read_Blob_Request, ATT_Read_Blob_Response, ATT_Read_By_Group_Type_Request, ATT_Read_By_Group_Type_Response, ATT_Read_By_Type_Request_128bit, ATT_Read_By_Type_Request, ATT_Read_By_Type_Response, ATT_Read_Multiple_Request, ATT_Read_Multiple_Response, ATT_Read_Request, ATT_Read_Response, ATT_Write_Command, ATT_Write_Request, ATT_Write_Response
 
 
     def do_decode_pcap(self,args):
@@ -633,7 +654,9 @@ Or use a static PCAP file as an input (this will also parse out the Write/Read c
 
     > decode_pcap /home/user/test.pcap
 
-For PCAP format (especially when using FIFO with Btlejack) use the 'll_phdr' format within the tool itself.
+For PCAP format (especially when using FIFO with Btlejack) use the 'll_phdr' format within the tool itself. E.g.:
+
+    > btlejack -c <BDADDRESS> -w /tmp/pipe -x ll_phdr
 """
 
         filename = self.FIFO
