@@ -7,8 +7,6 @@ import shlex
 import re
 import sys
 from configparser import ConfigParser
-
-from scapy.sendrecv import sniff
 from tabulate import tabulate
 from scapy.layers.bluetooth4LE import BTLE_ADV_IND, BTLE_DATA
 from scapy.layers.bluetooth import *
@@ -16,7 +14,7 @@ from scapy.utils import PcapReader
 
 __author__  = "ins1gn1a"
 __tool__    =  "jaBLEs"
-__version__ = "1.3.1"
+__version__ = "1.4.0"
 __banner__  = rf"""
    _       ____  _     _____     
   (_) __ _| __ )| |   | ____|___ 
@@ -616,9 +614,24 @@ Set a static Target for use with enum, write, and read commands:
             gatt = self.pp.blue(f"0x{gatt_r:04x}")
             self.pp.ok(f'Write-Req {gatt}: {data}')
 
+        elif pkt.haslayer(BTLE_DATA) and self._decode_pcap_fifo:
+            self.pp.ok(self.pcap_match_colour(str(pkt[BTLE_DATA])[2:-1]))
+
 
     def do_decode_pcap(self,args):
+        """
+Creates a FIFO pipe at /tmp/pipe by default. Stream an input PCAP format to parse the BTLE data:
 
+    > decode_pcap
+
+Specify a FIFO path:
+
+    > decode_pcap /tmp/pipe1
+
+Or use a static PCAP file as an input (this will also parse out the Write/Read commands and Handles:
+
+    > decode_pcap /home/user/test.pcap
+"""
 
         filename = self.FIFO
         fifo_scapy = False
@@ -635,12 +648,7 @@ Set a static Target for use with enum, write, and read commands:
                 fifo_scapy = False
                 filename = args
 
-
-
-
-        if fifo_scapy:
-            self.pp.error("Error: FIFO not yet supported!")
-            return
+        if fifo_scapy or not args:
 
             self.pp.info(f"Creating FIFO Pipe: {self.FIFO}")
             try:
@@ -654,47 +662,24 @@ Set a static Target for use with enum, write, and read commands:
                     return
 
             self.pp.info("FIFO opened")
-            # fifo = open(self.FIFO, 'r')
-            # while True:
-            try:
-                #data = sp.raw(fifo)
-                # data = fifo.readline()[:-1]
-                self._decode_pcap_fifo = True
-                # try:
-                sniff(offline=self.FIFO,prn=self.pkt_callback)
-
-                # except:
-                #     self.pp.error("Error: Unable to parse PCAP traffic")
-                #     return
-
-            except KeyboardInterrupt:
-                self.pp.info("Exited Decoder")
-                # fifo.close()
-                self.destroy_pipe()
-                return
+            fifo = open(filename, "rb", buffering=0)
+            self._decode_pcap_fifo = True
+            while True:
+                try:
+                    for pkt in (PcapReader(fifo)):
+                        try:
+                            self.parse_pcap(pkt)
+                        except:
+                            continue
+                except:
+                    self.pp.info("Exited Decoder")
+                    self.destroy_pipe()
+                    return
 
         else:
             self._decode_pcap_fifo = False
             for pkt in PcapReader(filename):
                 self.parse_pcap(pkt)
-
-        # if fifo_scapy:
-        #     self.pp.info(f"Creating FIFO Pipe: {self.FIFO}")
-        #     try:
-        #         self.make_pipe()
-        #     except:
-        #         try:
-        #             self.destroy_pipe()
-        #             self.make_pipe()
-        #         except:
-        #             self.pp.error(f"Error: Unable to make pipe: {self.FIFO}")
-        #             return
-        #
-        #     self.pp.info("FIFO opened")
-        #     self.parse_pcap(sniff(offline=filename))
-        #     print ("READFILE")
-        # else:
-        #     self.parse_pcap(PcapReader(filename))
 
 
 
