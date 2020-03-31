@@ -14,7 +14,7 @@ from scapy.utils import PcapReader
 
 __author__  = "ins1gn1a"
 __tool__    =  "jaBLEs"
-__version__ = "1.4.0"
+__version__ = "1.4.1"
 __banner__  = rf"""
    _       ____  _     _____     
   (_) __ _| __ )| |   | ____|___ 
@@ -585,34 +585,35 @@ Set a static Target for use with enum, write, and read commands:
 
     def parse_pcap(self,pkt):
 
+        _only_data = True
 
         if pkt.haslayer(BTLE_ADV_IND):
             return
-        # if pkt.haslayer(BTLE_DATA):
-        #
-        #     ble_data = pkt[BTLE_DATA]
-        # if ble_data.LLID == 1 and ble_data.len > 0:
-        #     print (ble_data.show())
+
         if pkt.haslayer(ATT_Read_Request):
             gatt_r = pkt[ATT_Read_Request].gatt_handle
             gatt = self.pp.blue(f"0x{gatt_r:04x}")
             self.pp.info(f'Read-Req {gatt}')
+            _only_data = False
 
         elif pkt.haslayer(ATT_Read_Response):
             value = self.pp.green(str(pkt[ATT_Read_Response].value)[2:-1])
             self.pp.ok(f'Read-Res {value}')
+            _only_data = False
 
         elif pkt.haslayer(ATT_Write_Command):
             data = self.pcap_match_colour(str(pkt[ATT_Write_Command].data)[2:-1])
             gatt_r = pkt[ATT_Write_Command].gatt_handle
             gatt = self.pp.blue(f"0x{gatt_r:04x}")
             self.pp.ok(f'Write-Cmd {gatt}: {data}')
+            _only_data = False
 
         elif pkt.haslayer(ATT_Write_Request):
             data = self.pp.green(str(pkt[ATT_Write_Request].data)[2:-1])
             gatt_r = pkt[ATT_Write_Request].gatt_handle
             gatt = self.pp.blue(f"0x{gatt_r:04x}")
             self.pp.ok(f'Write-Req {gatt}: {data}')
+            _only_data = False
 
         elif pkt.haslayer(BTLE_DATA) and self._decode_pcap_fifo:
             self.pp.ok(self.pcap_match_colour(str(pkt[BTLE_DATA])[2:-1]))
@@ -631,6 +632,8 @@ Specify a FIFO path:
 Or use a static PCAP file as an input (this will also parse out the Write/Read commands and Handles:
 
     > decode_pcap /home/user/test.pcap
+
+For PCAP format (especially when using FIFO with Btlejack) use the 'll_phdr' format within the tool itself.
 """
 
         filename = self.FIFO
