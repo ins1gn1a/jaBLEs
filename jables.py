@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-
+import glob
 from cmd import Cmd
 import os
 from bluepy import btle
@@ -7,12 +7,16 @@ import shlex
 import re
 import sys
 from configparser import ConfigParser
+
+from scapy.sendrecv import sniff
 from tabulate import tabulate
-import fcntl
+from scapy.layers.bluetooth4LE import BTLE_ADV_IND, BTLE_DATA
+from scapy.layers.bluetooth import *
+from scapy.utils import PcapReader
 
 __author__  = "ins1gn1a"
 __tool__    =  "jaBLEs"
-__version__ = "1.2.0"
+__version__ = "1.3.0"
 __banner__  = rf"""
    _       ____  _     _____     
   (_) __ _| __ )| |   | ____|___ 
@@ -32,6 +36,7 @@ class ColPrint(object):
     GREEN = '\x1b[92m'
     YELLOW = '\x1b[93m'
     RED = '\x1b[91m'
+    RESET = '\x1b[32m'
     WHITE = ''
     NO_FORMAT = '\x1b[0m'
 
@@ -90,6 +95,7 @@ class JablesUI(Cmd):
     _characteristics = []
     _block_data = []
     FIFO = '/tmp/pipe'
+    _decode_pcap_fifo = False
 
     # Set interface type (Public / Random)
     _hci_type_conf = parser.get('interface', 'type')
@@ -532,6 +538,161 @@ Set a static Target for use with enum, write, and read commands:
     def destroy_pipe(self):
         os.unlink(self.FIFO)
 
+    def _append_slash_if_dir(p):
+        if p and os.path.isdir(p) and p[-1] != os.sep:
+            return p + os.sep
+        else:
+            return p
+
+    def complete_decode_pcap(self, text, line, begidx, endidx):
+        """ File path autocompletion, used with the cmd module complete_* series functions"""
+        before_arg = line.rfind(" ", 0, begidx)
+
+        if before_arg == -1:
+            return  # arg not found
+
+        fixed = line[before_arg + 1:begidx]  # fixed portion of the arg
+        arg = line.split(" ", 1)[1]  # line[before_arg + 1:endidx]
+        pattern = arg.strip() + '*'
+
+        completions = []
+        for path in glob.glob(pattern):
+            if path[-5:].lower() == ".pcap" or os.path.isdir(path):
+                completions.append(path.replace(fixed, "", 1))
+        return completions
+
+
+    def pcap_match_colour(self,txt):
+
+        lastMatch = 0
+        formattedText = ''
+        txt = self.pp.green(txt)
+        #formattedText = re.sub(r'\\x[0-9a-zA-Z]{2}|(\\r)(\\n)', colourStr + r'\g<2>' + resetStr, txt)
+
+        for match in re.finditer(r'\\x[0-9a-zA-Z]{2}|(\\r)|(\\n)', txt):
+            start, end = match.span()
+            formattedText += txt[lastMatch: start]
+            formattedText += self.pp.PURPLE
+            formattedText += txt[start: end]
+            formattedText += self.pp.RESET
+            lastMatch = end
+        formattedText += txt[lastMatch:]
+        return formattedText
+
+
+    def parse_pcap(self,pkt):
+
+
+        if pkt.haslayer(BTLE_ADV_IND):
+            return
+        # if pkt.haslayer(BTLE_DATA):
+        #
+        #     ble_data = pkt[BTLE_DATA]
+        # if ble_data.LLID == 1 and ble_data.len > 0:
+        #     print (ble_data.show())
+        if pkt.haslayer(ATT_Read_Request):
+            gatt_r = pkt[ATT_Read_Request].gatt_handle
+            gatt = self.pp.blue(f"0x{gatt_r:04x}")
+            self.pp.info(f'Read-Req {gatt}')
+
+        elif pkt.haslayer(ATT_Read_Response):
+            value = self.pp.green(str(pkt[ATT_Read_Response].value)[2:-1])
+            self.pp.ok(f'Read-Res {value}')
+
+        elif pkt.haslayer(ATT_Write_Command):
+            data = self.pcap_match_colour(str(pkt[ATT_Write_Command].data)[2:-1])
+            gatt_r = pkt[ATT_Write_Command].gatt_handle
+            gatt = self.pp.blue(f"0x{gatt_r:04x}")
+            self.pp.ok(f'Write-Cmd {gatt}: {data}')
+
+        elif pkt.haslayer(ATT_Write_Request):
+            data = self.pp.green(str(pkt[ATT_Write_Request].data)[2:-1])
+            gatt_r = pkt[ATT_Write_Request].gatt_handle
+            gatt = self.pp.blue(f"0x{gatt_r:04x}")
+            self.pp.ok(f'Write-Req {gatt}: {data}')
+
+
+    def do_decode_pcap(self,args):
+
+
+        filename = self.FIFO
+        fifo_scapy = False
+        if args:
+            filename = args
+            if re.match('([/][\w\d]{1,})', args) and ".pcap" not in args:
+                self.pp.info(f"Parsing PCAP via FIFO: {args}")
+                filename = args
+                self.FIFO = filename
+                fifo_scapy = True
+
+            elif ".pcap" in args:
+                self.pp.info(f"Parsing PCAP as file: {args}")
+                fifo_scapy = False
+                filename = args
+
+
+
+
+        if fifo_scapy:
+            self.pp.error("Error: FIFO not yet supported!")
+            return
+
+            self.pp.info(f"Creating FIFO Pipe: {self.FIFO}")
+            try:
+                self.make_pipe()
+            except:
+                try:
+                    self.destroy_pipe()
+                    self.make_pipe()
+                except:
+                    self.pp.error(f"Error: Unable to make pipe: {self.FIFO}")
+                    return
+
+            self.pp.info("FIFO opened")
+            # fifo = open(self.FIFO, 'r')
+            # while True:
+            try:
+                #data = sp.raw(fifo)
+                # data = fifo.readline()[:-1]
+                self._decode_pcap_fifo = True
+                # try:
+                sniff(offline=self.FIFO,prn=self.pkt_callback)
+
+                # except:
+                #     self.pp.error("Error: Unable to parse PCAP traffic")
+                #     return
+
+            except KeyboardInterrupt:
+                self.pp.info("Exited Decoder")
+                # fifo.close()
+                self.destroy_pipe()
+                return
+
+        else:
+            self._decode_pcap_fifo = False
+            for pkt in PcapReader(filename):
+                self.parse_pcap(pkt)
+
+        # if fifo_scapy:
+        #     self.pp.info(f"Creating FIFO Pipe: {self.FIFO}")
+        #     try:
+        #         self.make_pipe()
+        #     except:
+        #         try:
+        #             self.destroy_pipe()
+        #             self.make_pipe()
+        #         except:
+        #             self.pp.error(f"Error: Unable to make pipe: {self.FIFO}")
+        #             return
+        #
+        #     self.pp.info("FIFO opened")
+        #     self.parse_pcap(sniff(offline=filename))
+        #     print ("READFILE")
+        # else:
+        #     self.parse_pcap(PcapReader(filename))
+
+
+
     def do_decode_text(self,args):
         """
 Creates a FIFO pipe at /tmp/pipe by default. Stream an input of Hex content for auto-decoding such as an output of Btlejack:
@@ -693,8 +854,10 @@ if __name__ == '__main__':
         print ("")
         pp.error("Error: Re-run with Sudo\n")
         sys.exit(1)
+
     prompt = JablesUI()
     prompt.prompt = f"\n{pp.red(__tool__)} > "
+
     while True:
         try:
             prompt.cmdloop('')
