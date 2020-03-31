@@ -16,7 +16,7 @@ from scapy.utils import PcapReader
 
 __author__  = "ins1gn1a"
 __tool__    =  "jaBLEs"
-__version__ = "1.3.0"
+__version__ = "1.3.1"
 __banner__  = rf"""
    _       ____  _     _____     
   (_) __ _| __ )| |   | ____|___ 
@@ -513,23 +513,29 @@ Set a static Target for use with enum, write, and read commands:
                 ba = bytearray.fromhex(a)
             except:
                 return
-            z = []
-            if re.match('^[0-9a-fA-F]+$', a):
 
-                for b in ba:
-                    _content = False
-                    c = (chr(b))
-                    if re.match('^[a-zA-Z0-9&£#$%^?!+\'\"\\\/| _=\-,.*\[\]{}()@]+$', c):
-                        if self.is_ascii(c):
-                            z.append(c)
-                            _content = True
-                        else:
-                            z.append("_")
+            if hex:
+                self.pp.ok(self.pcap_match_colour(str(ba)[12:-2]))
+                pass
 
-                if hex:
-                    print("")
-                    self.pp.info(f"Raw Hex: {a}")
-                self.pp.ok("".join(z))
+            else:
+                z = []
+                if re.match('^[0-9a-fA-F]+$', a):
+
+                    for b in ba:
+                        _content = False
+                        c = (chr(b))
+                        if re.match('^[a-zA-Z0-9&£#$%^?!+\'\"\\\/| _=\-,.*\[\]{}()@]+$', c):
+                            if self.is_ascii(c):
+                                z.append(c)
+                                _content = True
+                            else:
+                                z.append("_")
+
+                    # if hex:
+                    #     print("")
+                    #     self.pp.info(f"Raw Hex: {a}")
+                    self.pp.ok("".join(z))
 
     def make_pipe(self):
         os.mkfifo(self.FIFO,mode=0o666)
@@ -567,9 +573,8 @@ Set a static Target for use with enum, write, and read commands:
         lastMatch = 0
         formattedText = ''
         txt = self.pp.green(txt)
-        #formattedText = re.sub(r'\\x[0-9a-zA-Z]{2}|(\\r)(\\n)', colourStr + r'\g<2>' + resetStr, txt)
 
-        for match in re.finditer(r'\\x[0-9a-zA-Z]{2}|(\\r)|(\\n)', txt):
+        for match in re.finditer(r'\\x[0-9a-zA-Z]{2}|(\\r)|(\\n)|(\\t)', txt):
             start, end = match.span()
             formattedText += txt[lastMatch: start]
             formattedText += self.pp.PURPLE
@@ -715,6 +720,7 @@ Note: Add the -x (or --hex) arg to also print the raw Hex string alongside the d
                    self.FIFO = arg
                 elif arg == "-x" or arg == "--hex":
                     _hex = True
+                    self.pp.warn("Displaying raw byte output")
 
         # Create and open pipe
 
