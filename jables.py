@@ -14,7 +14,7 @@ from scapy.utils import PcapReader
 
 __author__  = "ins1gn1a"
 __tool__    =  "jaBLEs"
-__version__ = "1.4.2"
+__version__ = "1.5.0"
 __banner__  = rf"""
    _       ____  _     _____     
   (_) __ _| __ )| |   | ____|___ 
@@ -66,6 +66,12 @@ class ColPrint(object):
     def ok(self,string):
         print (self.GREEN + "[+] " + self.NO_FORMAT + string)
 
+    def inbound(self,string):
+        print (self.BLUE + "<== " + self.NO_FORMAT + string)
+
+    def outbound(self,string):
+        print (self.YELLOW + "==> " + self.NO_FORMAT + string)
+
 
 class JablesUI(Cmd):
 
@@ -94,6 +100,21 @@ class JablesUI(Cmd):
     _block_data = []
     FIFO = '/tmp/pipe'
     _decode_pcap_fifo = False
+
+    # ATT Opcodes
+    _opcode_dict = {
+        "0x0001": "Error-Response     ",
+        "0x0004": "Find Info-Request  ",
+        "0x0005": "Find Info-Response ",
+        "0x0008": "Read Type Request  ",
+        "0x0009": "Read Type Response ",
+        "0x0010": "Read Grp Request   ",
+        "0x0011": "Read Grp Response  ",
+        "0x0012": "Write Request      ",
+        "0x0013": "Write Response     ",
+        "0x001b": "Handle Notification",
+        "0x0052": "Write Command      "
+    }
 
     # Set interface type (Public / Random)
     _hci_type_conf = parser.get('interface', 'type')
@@ -583,118 +604,135 @@ Set a static Target for use with enum, write, and read commands:
         return formattedText
 
 
-    def parse_pcap(self,pkt):
+    def get_pkt_data(self,pkt,hex_raw):
 
+        try:
+            try:
+                data = pkt.value
+
+            except:
+
+                data = pkt.data
+
+        except:
+            data = ""
+
+        if len(data) > 0:
+            if not hex_raw:
+                data = str(data.hex())
+            else:
+                data = self.pcap_match_colour(str(data)[2:-1])
+        try:
+            gatt_r = pkt.gatt_handle
+            gatt = self.pp.blue(f"0x{gatt_r:04x}")
+        except:
+            gatt = "      "
+
+        return gatt,data
+
+
+
+    def parse_pcap(self,pkt,decode_val,view_response):
         _only_data = True
 
-        if pkt.haslayer(BTLE_ADV_IND):
-            return
+        if pkt.haslayer(ATT_Hdr):
+            opcode = (f"0x{pkt[ATT_Hdr].opcode:04x}")
+            gatt,data = self.get_pkt_data(pkt,decode_val)
+            try:
+                att = self._opcode_dict[opcode]
+            except:
+                return
 
-        if pkt.haslayer(ATT_Read_Request):
-            gatt_r = pkt[ATT_Read_Request].gatt_handle
-            gatt = self.pp.blue(f"0x{gatt_r:04x}")
-            self.pp.info(f'Read-Req {gatt}')
-            _only_data = False
-
-        elif pkt.haslayer(ATT_Read_Response):
-            value = self.pp.green(str(pkt[ATT_Read_Response].value)[2:-1])
-            self.pp.ok(f'Read-Res {value}')
-            _only_data = False
-
-        elif pkt.haslayer(ATT_Write_Command):
-            data = self.pcap_match_colour(str(pkt[ATT_Write_Command].data)[2:-1])
-            # data = self.pcap_match_colour(str(pkt[ATT_Write_Command].value)[2:-1])
-            gatt_r = pkt[ATT_Write_Command].gatt_handle
-            gatt = self.pp.blue(f"0x{gatt_r:04x}")
-            self.pp.ok(f'Write-Cmd {gatt}: {data}')
-            _only_data = False
-
-        elif pkt.haslayer(ATT_Write_Request):
-            data = self.pp.green(str(pkt[ATT_Write_Request].data)[2:-1])
-            # data = self.pp.green(str(pkt[ATT_Write_Request].value)[2:-1])
-            gatt_r = pkt[ATT_Write_Request].gatt_handle
-            gatt = self.pp.blue(f"0x{gatt_r:04x}")
-            self.pp.ok(f'Write-Req {gatt}: {data}')
-            _only_data = False
-
-        # elif pkt.haslayer(ATT_Find_By_Type_Value_Response):
-        #     print ()
-
-        elif pkt.haslayer(BTLE_DATA) and self._decode_pcap_fifo:
-            data = self.pcap_match_colour(str(pkt[BTLE_DATA])[2:-1])
-            gatt_r = (pkt.gatt_handle)
-            gatt = self.pp.blue(f"0x{gatt_r:04x}")
-            self.pp.ok(f'          {gatt}: {data}')
-
-
-        elif pkt.load:
-            # print (pkt.show())
-            data = self.pcap_match_colour(str(pkt.load)[2:-1])
-            gatt_r = (pkt.gatt_handle)
-            gatt = self.pp.blue(f"0x{gatt_r:04x}")
-            self.pp.warn(f'          {gatt}: {data}')
-
-
-
-
-    # ATT_Execute_Write_Request, ATT_Execute_Write_Response, ATT_Find_By_Type_Value_Request, ATT_Find_By_Type_Value_Response, ATT_Find_Information_Request, ATT_Find_Information_Response, ATT_Handle_Value_Indication, ATT_Handle_Value_Notification, ATT_Prepare_Write_Request, ATT_Prepare_Write_Response, ATT_Read_Blob_Request, ATT_Read_Blob_Response, ATT_Read_By_Group_Type_Request, ATT_Read_By_Group_Type_Response, ATT_Read_By_Type_Request_128bit, ATT_Read_By_Type_Request, ATT_Read_By_Type_Response, ATT_Read_Multiple_Request, ATT_Read_Multiple_Response, ATT_Read_Request, ATT_Read_Response, ATT_Write_Command, ATT_Write_Request, ATT_Write_Response
+            if ("Read" in att or "Find" in att or "Error" in att):
+                return
+            if ("Response" in att or "Notification" in att):
+                if view_response:
+                    self.pp.inbound(f'{att} : {gatt} : {data}')
+            else:
+                self.pp.outbound(f'{att} : {gatt} : {data}')
 
 
     def do_decode_pcap(self,args):
         """
-Creates a FIFO pipe at /tmp/pipe by default. Stream an input PCAP format to parse the BTLE data:
+Creates a FIFO pipe at /tmp/pipe by default (or this can be specified). Stream an input PCAP format to parse the BTLE data:
 
     > decode_pcap
-
-Specify a FIFO path:
-
-    > decode_pcap /tmp/pipe1
-
-Or use a static PCAP file as an input (this will also parse out the Write/Read commands and Handles:
-
-    > decode_pcap /home/user/test.pcap
+    > decode_pcap /tmp/pipe
 
 For PCAP format (especially when using FIFO with Btlejack) use the 'll_phdr' format within the tool itself. E.g.:
 
     > btlejack -c <BDADDRESS> -w /tmp/pipe -x ll_phdr
+
+Or use a static PCAP file as an input (this will also parse out the Write/Read commands and Handles):
+
+    > decode_pcap /home/user/test.pcap
+
+The supplemental arguments available are as follows:
+
+    -a : Displays both inbound and outbound packets (Default: Outbound)
+    -x : Displays data as raw hex rather than a decoded format
 """
 
         filename = self.FIFO
         fifo_scapy = False
+        decode_val = True
+        _view_response = False
+
+        args = shlex.split(args)
+        for arg in args:
+            if re.match('([/][\w\d]{1,})', arg) or re.match('^((.+)\/([^/]+))$',arg):
+                filename = arg
+                continue
+            elif arg == "-x":
+                decode_val = False
+                self.pp.info("Displaying Raw Hex")
+                continue
+            elif arg == "-a":
+                _view_response = True
+                self.pp.info("Displaying Inbound and Outbound")
+
+        if decode_val:
+            self.pp.info("Decoding BLE Data")
+
+        if not _view_response:
+            self.pp.info("Displaying Outbound Only")
+
         if args:
-            filename = args
-            if re.match('([/][\w\d]{1,})', args) and ".pcap" not in args:
-                self.pp.info(f"Parsing PCAP via FIFO: {args}")
-                filename = args
+            if re.match('([/][\w\d]{1,})', filename) and ".pcap" not in filename:
+                self.pp.info(f"Parsing PCAP via FIFO: {filename}")
                 self.FIFO = filename
                 fifo_scapy = True
 
-            elif ".pcap" in args:
-                self.pp.info(f"Parsing PCAP as file: {args}")
+            elif ".pcap" in filename:
+                self.pp.info(f"Parsing PCAP as file: {filename}")
                 fifo_scapy = False
-                filename = args
+
 
         if fifo_scapy or not args:
 
-            self.pp.info(f"Creating FIFO Pipe: {self.FIFO}")
-            try:
-                self.make_pipe()
-            except:
+            if os.path.exists(filename):
+                self.pp.info(f"Using FIFO Pipe: {self.FIFO}")
+            else:
+                self.pp.info(f"Creating FIFO Pipe: {self.FIFO}")
                 try:
-                    self.destroy_pipe()
                     self.make_pipe()
                 except:
-                    self.pp.error(f"Error: Unable to make pipe: {self.FIFO}")
-                    return
+                    try:
+                        self.destroy_pipe()
+                        self.make_pipe()
+                    except:
+                        self.pp.error(f"Error: Unable to make pipe: {self.FIFO}")
+                        return
 
             self.pp.info("FIFO opened")
             fifo = open(filename, "rb", buffering=0)
             self._decode_pcap_fifo = True
+            self.pp.ok("Opcode Command      : Handle : Data")
             while True:
                 try:
                     for pkt in (PcapReader(fifo)):
                         try:
-                            self.parse_pcap(pkt)
+                            self.parse_pcap(pkt,decode_val,_view_response)
                         except:
                             continue
                 except:
@@ -704,8 +742,9 @@ For PCAP format (especially when using FIFO with Btlejack) use the 'll_phdr' for
 
         else:
             self._decode_pcap_fifo = False
+            self.pp.ok("Opcode Command      : Handle : Data")
             for pkt in PcapReader(filename):
-                self.parse_pcap(pkt)
+                self.parse_pcap(pkt,decode_val,_view_response)
 
 
 
