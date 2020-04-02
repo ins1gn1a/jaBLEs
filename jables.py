@@ -14,7 +14,7 @@ from scapy.utils import PcapReader
 
 __author__  = "ins1gn1a"
 __tool__    =  "jaBLEs"
-__version__ = "1.6.1"
+__version__ = "1.6.2"
 __banner__  = rf"""
    _       ____  _     _____     
   (_) __ _| __ )| |   | ____|___ 
@@ -436,9 +436,17 @@ Alternatively, if you've already run a block previously, you can re-run this by 
 
     > write x
 """
-        if args == "x":
-           self.pp.info("Sending previous block of write commands...")
-        else:
+        _send_stored_block = False
+        _send_repeat = False
+        args = shlex.split(args)
+        for arg in args:
+            if arg == "-x":
+
+               _send_stored_block = True
+            elif arg == "-r":
+                self.pp.info("Repeating write commands 2 times...")
+                _send_repeat = True
+        if _send_stored_block is False:
             self._block_data = []
             _block_input = ""
             self.pp.info("Enter one command per line as 'handle data' and then 'end' to finish. E.g: 0x1e 305721e4a290 ")
@@ -448,9 +456,11 @@ Alternatively, if you've already run a block previously, you can re-run this by 
                     self._block_data.append(_block_input)
                 else:
                     self.pp.info("Write command input finished!")
+                    _send_stored_block = True
                     break
 
-        if self._block_data:
+        if len(self._block_data) > 0 and _send_stored_block:
+            self.pp.info("Sending previous block of write commands...")
             self.pp.info("Connecting...")
 
             try:
@@ -466,6 +476,10 @@ Alternatively, if you've already run a block previously, you can re-run this by 
             for x in self._block_data:
                 self.pp.info(f"Sending write cmd: {x}")
                 self.write(x,_device)
+            if _send_repeat:
+                for x in self._block_data:
+                    self.pp.info(f"Sending write cmd: {x}")
+                    self.write(x, _device)
             self.pp.ok("Commands sent")
 
         else:
@@ -764,7 +778,7 @@ The supplemental arguments available are as follows:
 
             for pkt in PcapReader(filename):
                 self.parse_pcap(pkt,decode_val,_view_response)
-                
+
             if self._target_changed_pcap_decode and self._pcap_add_write_blk:
                 self.pp.ok(f"Set new target as {self._target}")
 
