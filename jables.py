@@ -14,7 +14,7 @@ from scapy.utils import PcapReader
 
 __author__  = "ins1gn1a"
 __tool__    =  "jaBLEs"
-__version__ = "1.6.0"
+__version__ = "1.6.1"
 __banner__  = rf"""
    _       ____  _     _____     
   (_) __ _| __ )| |   | ____|___ 
@@ -101,6 +101,7 @@ class JablesUI(Cmd):
     FIFO = '/tmp/pipe'
     _decode_pcap_fifo = False
     _pcap_add_write_blk = False
+    _target_changed_pcap_decode = False
 
     # ATT Opcodes
     _opcode_dict = {
@@ -639,6 +640,13 @@ Set a static Target for use with enum, write, and read commands:
     def parse_pcap(self,pkt,decode_val,view_response):
         _only_data = True
 
+        if self._pcap_add_write_blk:
+            try:
+                self._target = pkt.AdvA
+                self._target_changed_pcap_decode = True
+            except:
+                pass
+
         if pkt.haslayer(ATT_Hdr):
             opcode = (f"0x{pkt[ATT_Hdr].opcode:04x}")
             gatt,data = self.get_pkt_data(pkt,decode_val)
@@ -746,14 +754,19 @@ The supplemental arguments available are as follows:
                 except:
                     self.pp.info("Exited Decoder")
                     self.destroy_pipe()
+                    if self._target_changed_pcap_decode and self._pcap_add_write_blk:
+                        self.pp.ok(f"Set new target as {self._target}")
                     return
 
         else:
             self._decode_pcap_fifo = False
             self.pp.ok("Opcode Command      : Handle : Data")
+
             for pkt in PcapReader(filename):
                 self.parse_pcap(pkt,decode_val,_view_response)
-
+                
+            if self._target_changed_pcap_decode and self._pcap_add_write_blk:
+                self.pp.ok(f"Set new target as {self._target}")
 
 
     def do_decode_text(self,args):
