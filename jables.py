@@ -14,7 +14,7 @@ from scapy.utils import PcapReader
 
 __author__  = "ins1gn1a"
 __tool__    =  "jaBLEs"
-__version__ = "1.6.2"
+__version__ = "1.7.0"
 __banner__  = rf"""
    _       ____  _     _____     
   (_) __ _| __ )| |   | ____|___ 
@@ -434,18 +434,15 @@ Note: If you suffix the command with 'string' this will be converted to a hex st
 
 Alternatively, if you've already run a block previously, you can re-run this by sending the 'x' argument:
 
-    > write x
+    > write -x
 """
         _send_stored_block = False
         _send_repeat = False
         args = shlex.split(args)
         for arg in args:
             if arg == "-x":
-
                _send_stored_block = True
-            elif arg == "-r":
-                self.pp.info("Repeating write commands 2 times...")
-                _send_repeat = True
+
         if _send_stored_block is False:
             self._block_data = []
             _block_input = ""
@@ -476,10 +473,7 @@ Alternatively, if you've already run a block previously, you can re-run this by 
             for x in self._block_data:
                 self.pp.info(f"Sending write cmd: {x}")
                 self.write(x,_device)
-            if _send_repeat:
-                for x in self._block_data:
-                    self.pp.info(f"Sending write cmd: {x}")
-                    self.write(x, _device)
+
             self.pp.ok("Commands sent")
 
         else:
@@ -698,6 +692,7 @@ The supplemental arguments available are as follows:
     -a : Displays both inbound and outbound packets (Default: Outbound)
     -x : Displays data as raw hex rather than a decoded format
     -w : Add the Write commands to the internal storage for later replay via 'writeblk x'
+    -r : Replay directly during PCAP parsing (Only via static PCAP file input) - Infers -w
 """
 
         filename = self.FIFO
@@ -705,6 +700,7 @@ The supplemental arguments available are as follows:
         decode_val = True
         _view_response = False
         self._pcap_add_write_blk = False
+        _replay = False
 
         args = shlex.split(args)
         for arg in args:
@@ -720,6 +716,9 @@ The supplemental arguments available are as follows:
                 self.pp.info("Displaying Inbound and Outbound")
             elif arg == "-w":
                 self._pcap_add_write_blk = True
+            elif arg == "-r":
+                self._pcap_add_write_blk = True
+                _replay = True
 
         if decode_val:
             self.pp.info("Decoding BLE Data")
@@ -781,6 +780,19 @@ The supplemental arguments available are as follows:
 
             if self._target_changed_pcap_decode and self._pcap_add_write_blk:
                 self.pp.ok(f"Set new target as {self._target}")
+
+            if _replay:
+                try:
+                    _device = btle.Peripheral(self._target,
+                                              addrType=self._hci_type,
+                                              iface=int(self._interface))
+                except:
+                    self.pp.error("Error: Unable to connect")
+                    return
+
+                for x in self._block_data:
+                    self.pp.info(f"Sending write cmd: {x}")
+                    self.write(x, _device)
 
 
     def do_decode_text(self,args):
