@@ -14,7 +14,7 @@ from scapy.utils import PcapReader
 
 __author__  = "ins1gn1a"
 __tool__    =  "jaBLEs"
-__version__ = "1.5.0"
+__version__ = "1.6.0"
 __banner__  = rf"""
    _       ____  _     _____     
   (_) __ _| __ )| |   | ____|___ 
@@ -100,6 +100,7 @@ class JablesUI(Cmd):
     _block_data = []
     FIFO = '/tmp/pipe'
     _decode_pcap_fifo = False
+    _pcap_add_write_blk = False
 
     # ATT Opcodes
     _opcode_dict = {
@@ -617,16 +618,19 @@ Set a static Target for use with enum, write, and read commands:
         except:
             data = ""
 
+        try:
+            gatt_r = pkt.gatt_handle
+            gatt = self.pp.blue(f"0x{gatt_r:02x}")
+        except:
+            gatt = "      "
+
         if len(data) > 0:
+            if self._pcap_add_write_blk and len(gatt.replace(" ","")) > 0:
+                self._block_data.append(f"0x{pkt.gatt_handle:02x} {str(data.hex())}")
             if not hex_raw:
                 data = str(data.hex())
             else:
                 data = self.pcap_match_colour(str(data)[2:-1])
-        try:
-            gatt_r = pkt.gatt_handle
-            gatt = self.pp.blue(f"0x{gatt_r:04x}")
-        except:
-            gatt = "      "
 
         return gatt,data
 
@@ -671,12 +675,14 @@ The supplemental arguments available are as follows:
 
     -a : Displays both inbound and outbound packets (Default: Outbound)
     -x : Displays data as raw hex rather than a decoded format
+    -w : Add the Write commands to the internal storage for later replay via 'writeblk x'
 """
 
         filename = self.FIFO
         fifo_scapy = False
         decode_val = True
         _view_response = False
+        self._pcap_add_write_blk = False
 
         args = shlex.split(args)
         for arg in args:
@@ -690,6 +696,8 @@ The supplemental arguments available are as follows:
             elif arg == "-a":
                 _view_response = True
                 self.pp.info("Displaying Inbound and Outbound")
+            elif arg == "-w":
+                self._pcap_add_write_blk = True
 
         if decode_val:
             self.pp.info("Decoding BLE Data")
